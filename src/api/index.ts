@@ -9,20 +9,13 @@ export class APIClient {
 
   // GET 요청
   async get<T>(endpoint: string, timeout = 5000, token?: string): Promise<T> {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      const options = this.createFetchOptions("GET", undefined, controller);
-      const interceptedOptions = await this.requestInterceptor(options, token);
-      const response = await fetch(
-        `${this.baseUrl}${endpoint}`,
-        interceptedOptions
-      );
-      return this.responseInterceptor<T>(response);
-    } finally {
-      clearTimeout(id);
-    }
+    const options = this.createFetchOptions("GET", undefined);
+    const interceptedOptions = await this.requestInterceptor(options, token);
+    const response = await this.withTimeout(
+      fetch(`${this.baseUrl}${endpoint}`, interceptedOptions),
+      timeout
+    );
+    return this.responseInterceptor<T>(response);
   }
 
   // POST 요청
@@ -32,20 +25,13 @@ export class APIClient {
     token?: string,
     timeout = 5000
   ): Promise<T> {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      const options = this.createFetchOptions("POST", body, controller);
-      const interceptedOptions = await this.requestInterceptor(options, token);
-      const response = await fetch(
-        `${this.baseUrl}${endpoint}`,
-        interceptedOptions
-      );
-      return this.responseInterceptor<T>(response);
-    } finally {
-      clearTimeout(id);
-    }
+    const options = this.createFetchOptions("POST", body);
+    const interceptedOptions = await this.requestInterceptor(options, token);
+    const response = await this.withTimeout(
+      fetch(`${this.baseUrl}${endpoint}`, interceptedOptions),
+      timeout
+    );
+    return this.responseInterceptor<T>(response);
   }
 
   // PUT 요청
@@ -55,20 +41,13 @@ export class APIClient {
     token?: string,
     timeout = 5000
   ): Promise<T> {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      const options = this.createFetchOptions("PUT", body, controller);
-      const interceptedOptions = await this.requestInterceptor(options, token);
-      const response = await fetch(
-        `${this.baseUrl}${endpoint}`,
-        interceptedOptions
-      );
-      return this.responseInterceptor<T>(response);
-    } finally {
-      clearTimeout(id);
-    }
+    const options = this.createFetchOptions("PUT", body);
+    const interceptedOptions = await this.requestInterceptor(options, token);
+    const response = await this.withTimeout(
+      fetch(`${this.baseUrl}${endpoint}`, interceptedOptions),
+      timeout
+    );
+    return this.responseInterceptor<T>(response);
   }
 
   // DELETE 요청
@@ -77,20 +56,13 @@ export class APIClient {
     token?: string,
     timeout = 5000
   ): Promise<T> {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      const options = this.createFetchOptions("DELETE", undefined, controller);
-      const interceptedOptions = await this.requestInterceptor(options, token);
-      const response = await fetch(
-        `${this.baseUrl}${endpoint}`,
-        interceptedOptions
-      );
-      return this.responseInterceptor<T>(response);
-    } finally {
-      clearTimeout(id);
-    }
+    const options = this.createFetchOptions("DELETE");
+    const interceptedOptions = await this.requestInterceptor(options, token);
+    const response = await this.withTimeout(
+      fetch(`${this.baseUrl}${endpoint}`, interceptedOptions),
+      timeout
+    );
+    return this.responseInterceptor<T>(response);
   }
 
   // 요청 인터셉터
@@ -128,16 +100,30 @@ export class APIClient {
     return response.json();
   }
 
+  private async withTimeout<T>(
+    promise: Promise<Response>,
+    timeout: number
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const response = await Promise.race([
+        promise,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Request timed out")), timeout)
+        ),
+      ]);
+      return response;
+    } finally {
+      clearTimeout(id);
+    }
+  }
   // Fetch 옵션 생성
-  private createFetchOptions(
-    method: method,
-    body?: any,
-    controller?: AbortController
-  ): RequestInit {
+  private createFetchOptions(method: method, body?: any): RequestInit {
     const options: RequestInit = {
       method,
       headers: { "Content-Type": "application/json" },
-      signal: controller?.signal,
     };
 
     if (body) {
