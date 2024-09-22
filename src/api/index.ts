@@ -102,7 +102,7 @@ export class APIClient {
       ]);
 
       if (!response.ok) {
-        throw { status: response.status, response }; // 여기를 수정
+        throw { status: response.status, response };
       }
 
       if (typeof this.interceptor?.response === "function") {
