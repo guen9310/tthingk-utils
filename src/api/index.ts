@@ -1,55 +1,60 @@
-import { RequestInterceptor, ResponseInterceptor } from "./interceptor";
-import { createFetchOptions, withTimeout } from "./utils";
 import { ErrorHandler } from "./errorHandler";
 
 export type method = "GET" | "POST" | "DELETE" | "PUT";
-
 interface RequestParams {
   method?: method;
   endpoint: string;
-  body?: any;
+  body?: Record<string, any>;
   token?: string;
   timeout?: number;
 }
 
+interface Interceptor {
+  request?: (
+    options: RequestInit,
+    token?: string
+  ) => Promise<RequestInit> | RequestInit;
+  response?: (response: Response) => Promise<any>;
+}
+
 export class APIClient {
   private baseUrl: string;
-  private requestInterceptor?: RequestInterceptor;
-  private responseInterceptor?: ResponseInterceptor;
-  private errorHandler?: ErrorHandler;
+  private interceptor?: Interceptor;
+  private errorHandler: ErrorHandler;
 
   constructor(
     baseUrl: string,
-    requestInterceptor?: RequestInterceptor,
-    responseInterceptor?: ResponseInterceptor,
-    errorHandler?: ErrorHandler
+    options?: {
+      interceptor?: {
+        request?: (
+          options: RequestInit,
+          token?: string
+        ) => Promise<RequestInit> | RequestInit;
+        response?: (response: Response) => Promise<any>;
+      };
+    }
   ) {
     this.baseUrl = baseUrl;
-    this.requestInterceptor = requestInterceptor;
-    this.responseInterceptor = responseInterceptor;
-    this.errorHandler = errorHandler;
+    this.interceptor = options?.interceptor || {}; // 인터셉터의 기본값을 빈 객체로 처리
+    this.errorHandler = new ErrorHandler();
   }
-  // GET 요청
+
   async get<T>(params: RequestParams): Promise<T> {
     return this.request<T>({ ...params, method: "GET" });
   }
 
-  // POST 요청
   async post<T>(params: RequestParams): Promise<T> {
     return this.request<T>({ ...params, method: "POST" });
   }
 
-  // PUT 요청
   async put<T>(params: RequestParams): Promise<T> {
     return this.request<T>({ ...params, method: "PUT" });
   }
 
-  // DELETE 요청
   async delete<T>(params: RequestParams): Promise<T> {
     return this.request<T>({ ...params, method: "DELETE" });
   }
 
-  //공통 요청
   private async request<T>({
     method = "GET",
     endpoint,
@@ -58,41 +63,59 @@ export class APIClient {
     timeout = 5000,
   }: RequestParams): Promise<T> {
     const controller = new AbortController();
-    let options = createFetchOptions(method, body);
-    options.signal = controller.signal;
+    let options: RequestInit = {
+      method,
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+    };
 
-    // 요청 인터셉터가 있는 경우 적용
-    if (this.requestInterceptor) {
-      options = await this.requestInterceptor.apply(options, token);
+    if (body) {
+      options.body = JSON.stringify(body);
+    }
+
+    if (token) {
+      options.headers = {
+        ...options.headers,
+        Authorization: `Bearer ${token}`,
+      };
+    }
+
+    if (typeof this.interceptor?.request === "function") {
+      try {
+        options = await this.interceptor.request(options, token);
+      } catch (interceptorError) {
+        return Promise.reject(await this.errorHandler.handle(interceptorError));
+      }
     }
 
     try {
-      const response = await withTimeout(
-        fetch(`${this.baseUrl}${endpoint}`, options),
-        timeout,
-        controller
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          controller.abort();
+          reject(new DOMException("Timeout", "AbortError"));
+        }, timeout)
       );
 
+      const response = await Promise.race([
+        fetch(`${this.baseUrl}${endpoint}`, options),
+        timeoutPromise,
+      ]);
+
       if (!response.ok) {
-        const errorMessage = await response.json();
-        throw new Error(errorMessage);
+        throw { status: response.status, response }; // 여기를 수정
       }
 
-      // 응답 인터셉터가 있는 경우 적용
-      if (this.responseInterceptor) {
-        return await this.responseInterceptor.apply<T>(response);
+      if (typeof this.interceptor?.response === "function") {
+        return await this.interceptor.response(response);
       }
 
-      // 응답 인터셉터가 없으면 기본 처리
-      return await response.json();
+      const contentType = response.headers.get("Content-Type");
+      if (contentType && contentType.includes("application/json")) {
+        return await response.json();
+      }
+      return (await response.text()) as unknown as T;
     } catch (error) {
-      // 에러 핸들러가 있는 경우 적용
-      if (this.errorHandler) {
-        return this.errorHandler.handle(error);
-      }
-
-      // 기본 에러 처리
-      throw error;
+      return Promise.reject(await this.errorHandler.handle(error));
     }
   }
 }

@@ -1,7 +1,10 @@
 import { method } from ".";
 
 // Fetch 옵션 생성
-export const createFetchOptions = (method: method, body?: any): RequestInit => {
+export const createFetchOptions = (
+  method: method,
+  body?: Record<string, any>
+): RequestInit => {
   const options: RequestInit = {
     method,
     headers: { "Content-Type": "application/json" },
@@ -15,7 +18,7 @@ export const createFetchOptions = (method: method, body?: any): RequestInit => {
 };
 
 // Timeout 시 취소
-export const withTimeout = async <T>(
+export const withTimeout = async (
   promise: Promise<Response>,
   timeout: number,
   controller: AbortController
