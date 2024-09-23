@@ -39,19 +39,19 @@ export class APIClient {
     this.errorHandler = new ErrorHandler();
   }
 
-  async get<T>(params: RequestParams): Promise<T> {
+  async get<T>(params: Omit<RequestParams, "method">): Promise<T> {
     return this.request<T>({ ...params, method: "GET" });
   }
 
-  async post<T>(params: RequestParams): Promise<T> {
+  async post<T>(params: Omit<RequestParams, "method">): Promise<T> {
     return this.request<T>({ ...params, method: "POST" });
   }
 
-  async put<T>(params: RequestParams): Promise<T> {
+  async put<T>(params: Omit<RequestParams, "method">): Promise<T> {
     return this.request<T>({ ...params, method: "PUT" });
   }
 
-  async delete<T>(params: RequestParams): Promise<T> {
+  async delete<T>(params: Omit<RequestParams, "method">): Promise<T> {
     return this.request<T>({ ...params, method: "DELETE" });
   }
 

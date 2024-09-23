@@ -12,7 +12,7 @@ describe("APIClient 성공 테스트", () => {
     fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       json: jest.fn().mockResolvedValue({ data: "test data" }),
-      headers: new Headers({ "Content-Type": "application/json" }), // 헤더 추가
+      headers: new Headers({ "Content-Type": "application/json" }),
       clone: function () {
         return this;
       },
@@ -39,6 +39,28 @@ describe("APIClient 성공 테스트", () => {
       })
     );
     expect(data).toEqual({ data: "test data" });
+  });
+
+  it("POST 요청에서 method를 GET으로 덮어쓰기 시도했을 때, POST 요청이 유지되는지 테스트", async () => {
+    const mockBody = { title: "foo", body: "bar", userId: 1 };
+
+    await apiClient.post({
+      endpoint: "/posts",
+      body: mockBody,
+      method: "GET",
+    } as any);
+
+    expect(fetch).toHaveBeenCalledWith(
+      `${baseUrl}/posts`,
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(mockBody),
+        signal: expect.anything(),
+      })
+    );
   });
 
   it("POST 요청 성공 테스트", async () => {
