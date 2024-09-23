@@ -26,7 +26,7 @@ const newUser = await api.post({
 });
 // 인터셉터 사용 예시
 const apiWithInterceptor = createAPIClient(
-  "https://fe-project-epigram-api.vercel.app/2-1",
+  "https://api.example.com",
   {
     interceptor: {
       request: async (options) => {
