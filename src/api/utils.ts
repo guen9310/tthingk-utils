@@ -3,7 +3,6 @@ import { method } from ".";
 export const createFetchOptions = (
   method: method,
   body?: Record<string, any>,
-  token?: string,
   signal?: AbortSignal
 ): RequestInit => {
   const options: RequestInit = {
@@ -14,13 +13,6 @@ export const createFetchOptions = (
 
   if (body) {
     options.body = JSON.stringify(body);
-  }
-
-  if (token) {
-    options.headers = {
-      ...options.headers,
-      Authorization: `Bearer ${token}`,
-    };
   }
 
   return options;

@@ -25,16 +25,27 @@ const newUser = await api.post({
   body: { name: "John Doe", email: "john@example.com" },
 });
 // 인터셉터 사용 예시
-const apiWithInterceptor = createAPIClient("https://api.example.com", {
-  interceptor: {
-    request: async (options, token) => {
-      // 요청 전 처리 로직
-      return options;
+const apiWithInterceptor = createAPIClient(
+  "https://fe-project-epigram-api.vercel.app/2-1",
+  {
+    interceptor: {
+      request: async (options) => {
+        // 요청 전 처리 로직
+        const token = "your-token-here";
+        options.headers = {
+          ...options.headers,
+          Authorization: `Bearer ${token}`,
+        };
+        return options;
+      },
+      response: async (response) => {
+        // 응답 후 처리 로직
+        const data = await response.json();
+        return { data, modify: true };
+      },
     },
-    response: async (response) => {
-      // 응답 후 처리 로직
-      return response.json();
-    },
-  },
-});
+  }
+);
+
+await apiWithInterceptor.get({ endpoint: "/users/me" });
 ```
