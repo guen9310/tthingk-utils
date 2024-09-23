@@ -1,13 +1,13 @@
-import { APIClient } from "..";
+import { createAPIClient } from "..";
 
 describe("APIClient 성공 테스트", () => {
   const baseUrl = "https://jsonplaceholder.typicode.com";
-  let apiClient: APIClient;
+  let apiClient: ReturnType<typeof createAPIClient>;
   let fetchMock: jest.Mock;
 
   beforeEach(() => {
     jest.useFakeTimers();
-    apiClient = new APIClient(baseUrl);
+    apiClient = createAPIClient(baseUrl);
 
     fetchMock = jest.fn().mockResolvedValue({
       ok: true,
@@ -120,14 +120,14 @@ describe("APIClient 성공 테스트", () => {
 
 describe("APIClient 상태 코드 에러 테스트", () => {
   const baseUrl = "https://jsonplaceholder.typicode.com";
-  let apiClient: APIClient;
+  let apiClient: ReturnType<typeof createAPIClient>;
 
   beforeAll(() => {
     jest.useFakeTimers();
   });
 
   beforeEach(() => {
-    apiClient = new APIClient(baseUrl);
+    apiClient = createAPIClient(baseUrl);
 
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -243,7 +243,7 @@ describe("APIClient 상태 코드 에러 테스트", () => {
 describe("APIClient 인터셉터 테스트", () => {
   const baseUrl = "https://jsonplaceholder.typicode.com";
   const mockToken = "token";
-  let apiClient: APIClient;
+  let apiClient: ReturnType<typeof createAPIClient>;
   let fetchMock: jest.Mock;
 
   beforeEach(() => {
@@ -269,7 +269,7 @@ describe("APIClient 인터셉터 테스트", () => {
       },
     };
 
-    apiClient = new APIClient(baseUrl, { interceptor });
+    apiClient = createAPIClient(baseUrl, { interceptor });
 
     fetchMock = jest.fn().mockResolvedValue({
       ok: true,

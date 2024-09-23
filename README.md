@@ -14,20 +14,18 @@ tthingk-utils는 간단하고 자주 사용되는 유틸리티 함수들을 모�
 #### 사용 방법
 
 ```ts
-import { APIClient } from "tthingk-utils/api";
-const api = new APIClient("https://api.example.com");
+import { createAPIClient } from "tthingk-utils/api";
 
+const api = createAPIClient("https://api.example.com");
 // GET 요청 예시
 const data = await api.get({ endpoint: "/users" });
-
 // POST 요청 예시
 const newUser = await api.post({
   endpoint: "/users",
   body: { name: "John Doe", email: "john@example.com" },
 });
-
 // 인터셉터 사용 예시
-const apiWithInterceptor = new APIClient("https://api.example.com", {
+const apiWithInterceptor = createAPIClient("https://api.example.com", {
   interceptor: {
     request: async (options, token) => {
       // 요청 전 처리 로직
@@ -40,5 +38,3 @@ const apiWithInterceptor = new APIClient("https://api.example.com", {
   },
 });
 ```
-
-### StoreManager (가제)

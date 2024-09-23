@@ -1,4 +1,5 @@
-import { ErrorHandler } from "./errorHandler";
+import { handleError } from "./errorHandler";
+import { withTimeout, createFetchOptions, handleResponse } from "./utils";
 
 export type method = "GET" | "POST" | "DELETE" | "PUT";
 interface RequestParams {
@@ -17,105 +18,57 @@ interface Interceptor {
   response?: (response: Response) => Promise<any>;
 }
 
-export class APIClient {
-  private baseUrl: string;
-  private interceptor?: Interceptor;
-  private errorHandler: ErrorHandler;
-
-  constructor(
-    baseUrl: string,
-    options?: {
-      interceptor?: {
-        request?: (
-          options: RequestInit,
-          token?: string
-        ) => Promise<RequestInit> | RequestInit;
-        response?: (response: Response) => Promise<any>;
-      };
-    }
-  ) {
-    this.baseUrl = baseUrl;
-    this.interceptor = options?.interceptor || {}; // 인터셉터의 기본값을 빈 객체로 처리
-    this.errorHandler = new ErrorHandler();
+export const createAPIClient = (
+  baseUrl: string,
+  options?: {
+    interceptor?: Interceptor;
   }
+) => {
+  const interceptor = options?.interceptor || {};
 
-  async get<T>(params: Omit<RequestParams, "method">): Promise<T> {
-    return this.request<T>({ ...params, method: "GET" });
-  }
-
-  async post<T>(params: Omit<RequestParams, "method">): Promise<T> {
-    return this.request<T>({ ...params, method: "POST" });
-  }
-
-  async put<T>(params: Omit<RequestParams, "method">): Promise<T> {
-    return this.request<T>({ ...params, method: "PUT" });
-  }
-
-  async delete<T>(params: Omit<RequestParams, "method">): Promise<T> {
-    return this.request<T>({ ...params, method: "DELETE" });
-  }
-
-  private async request<T>({
+  const request = async <T>({
     method = "GET",
     endpoint,
     body,
     token,
     timeout = 5000,
-  }: RequestParams): Promise<T> {
+  }: RequestParams): Promise<T> => {
     const controller = new AbortController();
-    let options: RequestInit = {
-      method,
-      headers: { "Content-Type": "application/json" },
-      signal: controller.signal,
-    };
+    let options = createFetchOptions(method, body, token, controller.signal);
 
-    if (body) {
-      options.body = JSON.stringify(body);
-    }
-
-    if (token) {
-      options.headers = {
-        ...options.headers,
-        Authorization: `Bearer ${token}`,
-      };
-    }
-
-    if (typeof this.interceptor?.request === "function") {
+    if (typeof interceptor.request === "function") {
       try {
-        options = await this.interceptor.request(options, token);
+        options = await interceptor.request(options, token);
       } catch (interceptorError) {
-        return Promise.reject(await this.errorHandler.handle(interceptorError));
+        return Promise.reject(await handleError(interceptorError));
       }
     }
 
     try {
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => {
-          controller.abort();
-          reject(new DOMException("Timeout", "AbortError"));
-        }, timeout)
+      const response = await withTimeout(
+        fetch(`${baseUrl}${endpoint}`, options),
+        timeout,
+        controller
       );
 
-      const response = await Promise.race([
-        fetch(`${this.baseUrl}${endpoint}`, options),
-        timeoutPromise,
-      ]);
-
-      if (!response.ok) {
-        throw { status: response.status, response };
+      if (typeof interceptor.response === "function") {
+        return await interceptor.response(response);
       }
 
-      if (typeof this.interceptor?.response === "function") {
-        return await this.interceptor.response(response);
-      }
-
-      const contentType = response.headers.get("Content-Type");
-      if (contentType && contentType.includes("application/json")) {
-        return await response.json();
-      }
-      return (await response.text()) as unknown as T;
+      return await handleResponse<T>(response);
     } catch (error) {
-      return Promise.reject(await this.errorHandler.handle(error));
+      return Promise.reject(await handleError(error));
     }
-  }
-}
+  };
+
+  return {
+    get: <T>(params: Omit<RequestParams, "method">) =>
+      request<T>({ ...params, method: "GET" }),
+    post: <T>(params: Omit<RequestParams, "method">) =>
+      request<T>({ ...params, method: "POST" }),
+    put: <T>(params: Omit<RequestParams, "method">) =>
+      request<T>({ ...params, method: "PUT" }),
+    delete: <T>(params: Omit<RequestParams, "method">) =>
+      request<T>({ ...params, method: "DELETE" }),
+  };
+};

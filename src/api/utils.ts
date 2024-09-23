@@ -1,20 +1,41 @@
 import { method } from ".";
 
-// Fetch 옵션 생성
 export const createFetchOptions = (
   method: method,
-  body?: Record<string, any>
+  body?: Record<string, any>,
+  token?: string,
+  signal?: AbortSignal
 ): RequestInit => {
   const options: RequestInit = {
     method,
     headers: { "Content-Type": "application/json" },
+    signal,
   };
 
   if (body) {
     options.body = JSON.stringify(body);
   }
 
+  if (token) {
+    options.headers = {
+      ...options.headers,
+      Authorization: `Bearer ${token}`,
+    };
+  }
+
   return options;
+};
+
+export const handleResponse = async <T>(response: Response): Promise<T> => {
+  if (!response.ok) {
+    throw { status: response.status, response };
+  }
+
+  const contentType = response.headers.get("Content-Type");
+  if (contentType && contentType.includes("application/json")) {
+    return await response.json();
+  }
+  return (await response.text()) as unknown as T;
 };
 
 // Timeout 시 취소
