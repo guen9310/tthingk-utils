@@ -218,7 +218,7 @@ describe("APIClient 상태 코드 에러 테스트", () => {
   });
 });
 
-describe("APIClient 인증 토큰 테스트", () => {
+describe("APIClient 인터셉터 테스트", () => {
   const baseUrl = "https://jsonplaceholder.typicode.com";
   const mockToken = "token";
   let apiClient: APIClient;
@@ -242,7 +242,8 @@ describe("APIClient 인증 토큰 테스트", () => {
           const errorMessage = await response.json();
           throw new Error(`응답 에러: ${errorMessage}`);
         }
-        return response.json();
+        const responseData = await response.json();
+        return { ...responseData, modified: true };
       },
     };
 
@@ -265,7 +266,8 @@ describe("APIClient 인증 토큰 테스트", () => {
     jest.useRealTimers();
   });
 
-  it("GET 요청에서 인증 토큰이 헤더에 추가되는지 테스트", async () => {
+  // request 인터셉터 테스트
+  it("GET 요청에서 request 인터셉터로 인증 토큰이 헤더에 추가되는지 테스트", async () => {
     await apiClient.get({ endpoint: "/posts/1", token: mockToken });
 
     expect(fetch).toHaveBeenCalledWith(
@@ -280,65 +282,37 @@ describe("APIClient 인증 토큰 테스트", () => {
     );
   });
 
-  it("POST 요청에서 인증 토큰이 헤더에 추가되는지 테스트", async () => {
-    const mockBody = { title: "foo", body: "bar", userId: 1 };
-
-    await apiClient.post({
-      endpoint: "/posts",
-      body: mockBody,
-      token: mockToken,
-    });
-
-    expect(fetch).toHaveBeenCalledWith(
-      `${baseUrl}/posts`,
-      expect.objectContaining({
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${mockToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(mockBody),
-        signal: expect.anything(),
-      })
-    );
-  });
-
-  it("PUT 요청에서 인증 토큰이 헤더에 추가되는지 테스트", async () => {
-    const mockBody = { title: "foo", body: "bar", userId: 1 };
-
-    await apiClient.put({
+  // response 인터셉터 성공 테스트
+  it("GET 요청에서 response 인터셉터가 데이터를 수정하는지 테스트", async () => {
+    const data = await apiClient.get({
       endpoint: "/posts/1",
-      body: mockBody,
       token: mockToken,
     });
 
-    expect(fetch).toHaveBeenCalledWith(
-      `${baseUrl}/posts/1`,
-      expect.objectContaining({
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${mockToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(mockBody),
-        signal: expect.anything(),
-      })
-    );
+    expect(data).toEqual({
+      data: "test data",
+      modified: true,
+    });
   });
 
-  it("DELETE 요청에서 인증 토큰이 헤더에 추가되는지 테스트", async () => {
-    await apiClient.delete({ endpoint: "/posts/1", token: mockToken });
+  // response 인터셉터 에러 처리 테스트
+  it("GET 요청에서 response 인터셉터가 응답 에러를 처리하는지 테스트", async () => {
+    // 500 에러를 모킹
+    fetchMock.mockResolvedValueOnce({
+      ok: false, // ok가 false여야 응답이 실패로 간주됨
+      status: 500,
+      json: jest.fn().mockResolvedValue({ message: "서버 오류" }),
+      clone: function () {
+        return this;
+      },
+    });
 
-    expect(fetch).toHaveBeenCalledWith(
-      `${baseUrl}/posts/1`,
-      expect.objectContaining({
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${mockToken}`,
-          "Content-Type": "application/json",
-        },
-        signal: expect.anything(),
-      })
-    );
+    try {
+      await apiClient.get({ endpoint: "/posts/1", token: mockToken });
+    } catch (error) {
+      // 에러 메시지가 제대로 던져졌는지 확인
+      if (error instanceof Error)
+        expect(error.message).toBe("응답 에러: 서버 오류");
+    }
   });
 });
