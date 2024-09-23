@@ -242,7 +242,6 @@ describe("APIClient 상태 코드 에러 테스트", () => {
 
 describe("APIClient 인터셉터 테스트", () => {
   const baseUrl = "https://jsonplaceholder.typicode.com";
-  const mockToken = "token";
   let apiClient: ReturnType<typeof createAPIClient>;
   let fetchMock: jest.Mock;
 
@@ -250,13 +249,12 @@ describe("APIClient 인터셉터 테스트", () => {
     jest.useFakeTimers();
 
     const interceptor = {
-      request: async (options: RequestInit, token?: string) => {
-        if (token) {
-          options.headers = {
-            ...options.headers,
-            Authorization: `Bearer ${token}`,
-          };
-        }
+      request: async (options: RequestInit) => {
+        const token = "token";
+        options.headers = {
+          ...options.headers,
+          Authorization: `Bearer ${token}`,
+        };
         return options;
       },
       response: async (response: Response) => {
@@ -290,13 +288,13 @@ describe("APIClient 인터셉터 테스트", () => {
 
   // request 인터셉터 테스트
   it("GET 요청에서 request 인터셉터로 인증 토큰이 헤더에 추가되는지 테스트", async () => {
-    await apiClient.get({ endpoint: "/posts/1", token: mockToken });
+    await apiClient.get({ endpoint: "/posts/1" });
 
     expect(fetch).toHaveBeenCalledWith(
       `${baseUrl}/posts/1`,
       expect.objectContaining({
         headers: {
-          Authorization: `Bearer ${mockToken}`,
+          Authorization: `Bearer token`,
           "Content-Type": "application/json",
         },
         signal: expect.anything(),
@@ -308,7 +306,6 @@ describe("APIClient 인터셉터 테스트", () => {
   it("GET 요청에서 response 인터셉터가 데이터를 수정하는지 테스트", async () => {
     const data = await apiClient.get({
       endpoint: "/posts/1",
-      token: mockToken,
     });
 
     expect(data).toEqual({
@@ -319,9 +316,8 @@ describe("APIClient 인터셉터 테스트", () => {
 
   // response 인터셉터 에러 처리 테스트
   it("GET 요청에서 response 인터셉터가 응답 에러를 처리하는지 테스트", async () => {
-    // 500 에러를 모킹
     fetchMock.mockResolvedValueOnce({
-      ok: false, // ok가 false여야 응답이 실패로 간주됨
+      ok: false,
       status: 500,
       json: jest.fn().mockResolvedValue({ message: "서버 오류" }),
       clone: function () {
@@ -330,9 +326,8 @@ describe("APIClient 인터셉터 테스트", () => {
     });
 
     try {
-      await apiClient.get({ endpoint: "/posts/1", token: mockToken });
+      await apiClient.get({ endpoint: "/posts/1" });
     } catch (error) {
-      // 에러 메시지가 제대로 던져졌는지 확인
       if (error instanceof Error)
         expect(error.message).toBe("응답 에러: 서버 오류");
     }
