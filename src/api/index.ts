@@ -1,5 +1,11 @@
 import { handleError } from "./errorHandler";
-import { withTimeout, createFetchOptions, handleResponse } from "./utils";
+import {
+  withTimeout,
+  createFetchOptions,
+  handleResponse,
+  logRequest,
+  logResponse,
+} from "./utils";
 
 export type method = "GET" | "POST" | "DELETE" | "PUT";
 interface RequestParams {
@@ -18,9 +24,11 @@ export const apiService = (
   baseUrl: string,
   options?: {
     interceptor?: Interceptor;
+    logging?: boolean;
   }
 ) => {
   const interceptor = options?.interceptor || {};
+  const logging = options?.logging || false;
 
   const executeRequest = async <T>({
     method = "GET",
@@ -29,36 +37,46 @@ export const apiService = (
     timeout = 5000,
   }: RequestParams): Promise<T> => {
     const controller = new AbortController();
+    const startTime = Date.now();
 
-    // 기본 옵션 생성
     let fetchOptions = createFetchOptions(method, body, controller.signal);
+    const url = `${baseUrl}${endpoint}`;
 
     try {
       if (typeof interceptor.request === "function") {
         fetchOptions = await interceptor.request(fetchOptions);
       }
     } catch (interceptorError) {
-      return Promise.reject(await handleError(interceptorError));
+      return Promise.reject(handleError(interceptorError));
+    } finally {
+      logRequest(logging, method, url, fetchOptions);
     }
-
+    let response;
+    let responseClone;
     try {
-      // fetch 요청 실행
-      const response = await withTimeout(
-        fetch(`${baseUrl}${endpoint}`, fetchOptions),
+      response = await withTimeout(
+        fetch(url, fetchOptions),
         timeout,
         controller
       );
+      responseClone = response.clone();
 
-      // 응답 처리 인터셉터가 있으면, 해당 인터셉터에 처리를 위임
+      if (!response.ok) {
+        const error = new Error(`HTTP error! Status: ${response.status}`);
+        (error as any).status = response.status;
+        (error as any).message = response.statusText;
+        return Promise.reject(handleError(error));
+      }
+
       if (typeof interceptor.response === "function") {
         return await interceptor.response(response);
       }
 
-      // 기본 응답 처리
       return await handleResponse<T>(response);
     } catch (error) {
-      // 요청 중 에러 발생 시 처리
-      return Promise.reject(await handleError(error));
+      return Promise.reject(handleError(error));
+    } finally {
+      logResponse(logging, responseClone!, startTime);
     }
   };
 
