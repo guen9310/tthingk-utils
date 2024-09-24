@@ -14,7 +14,7 @@ interface Interceptor {
   response?: (response: Response) => Promise<any>;
 }
 
-export const createAPIClient = (
+export const apiService = (
   baseUrl: string,
   options?: {
     interceptor?: Interceptor;
@@ -22,7 +22,7 @@ export const createAPIClient = (
 ) => {
   const interceptor = options?.interceptor || {};
 
-  const request = async <T>({
+  const executeRequest = async <T>({
     method = "GET",
     endpoint,
     body,
@@ -31,11 +31,11 @@ export const createAPIClient = (
     const controller = new AbortController();
 
     // 기본 옵션 생성
-    let options = createFetchOptions(method, body, controller.signal);
+    let fetchOptions = createFetchOptions(method, body, controller.signal);
 
     try {
       if (typeof interceptor.request === "function") {
-        options = await interceptor.request(options);
+        fetchOptions = await interceptor.request(fetchOptions);
       }
     } catch (interceptorError) {
       return Promise.reject(await handleError(interceptorError));
@@ -44,7 +44,7 @@ export const createAPIClient = (
     try {
       // fetch 요청 실행
       const response = await withTimeout(
-        fetch(`${baseUrl}${endpoint}`, options),
+        fetch(`${baseUrl}${endpoint}`, fetchOptions),
         timeout,
         controller
       );
@@ -64,12 +64,12 @@ export const createAPIClient = (
 
   return {
     get: <T>(params: Omit<RequestParams, "method">) =>
-      request<T>({ ...params, method: "GET" }),
+      executeRequest<T>({ ...params, method: "GET" }),
     post: <T>(params: Omit<RequestParams, "method">) =>
-      request<T>({ ...params, method: "POST" }),
+      executeRequest<T>({ ...params, method: "POST" }),
     put: <T>(params: Omit<RequestParams, "method">) =>
-      request<T>({ ...params, method: "PUT" }),
+      executeRequest<T>({ ...params, method: "PUT" }),
     delete: <T>(params: Omit<RequestParams, "method">) =>
-      request<T>({ ...params, method: "DELETE" }),
+      executeRequest<T>({ ...params, method: "DELETE" }),
   };
 };
