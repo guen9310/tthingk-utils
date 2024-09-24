@@ -9,7 +9,7 @@ tthingk-utils는 간단하고 자주 사용되는 유틸리티 함수들을 모�
 - RESTful API 요청 처리 (GET, POST, PUT, DELETE)
 - 타임아웃 처리
 - 요청/응답 인터셉터
-- 토큰 기반 인증 지원
+- 로깅 기능
 
 #### 사용 방법
 
@@ -25,27 +25,24 @@ const newUser = await api.post({
   body: { name: "John Doe", email: "john@example.com" },
 });
 // 인터셉터 사용 예시
-const apiWithInterceptor = createAPIClient(
-  "https://api.example.com",
-  {
-    interceptor: {
-      request: async (options) => {
-        // 요청 전 처리 로직
-        const token = "your-token-here";
-        options.headers = {
-          ...options.headers,
-          Authorization: `Bearer ${token}`,
-        };
-        return options;
-      },
-      response: async (response) => {
-        // 응답 후 처리 로직
-        const data = await response.json();
-        return { data, modify: true };
-      },
+const apiWithInterceptor = createAPIClient("https://api.example.com", {
+  interceptor: {
+    request: async (options) => {
+      // 요청 전 처리 로직
+      const token = "your-token-here";
+      options.headers = {
+        ...options.headers,
+        Authorization: `Bearer ${token}`,
+      };
+      return options;
     },
-  }
-);
+    response: async (response) => {
+      // 응답 후 처리 로직
+      const data = await response.json();
+      return { data, modify: true };
+    },
+  },
+});
 
 await apiWithInterceptor.get({ endpoint: "/users/me" });
 ```

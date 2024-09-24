@@ -20,6 +20,8 @@ interface Interceptor {
   response?: (response: Response) => Promise<any>;
 }
 
+type ApiError = { status: number } & Error;
+
 export const apiService = (
   baseUrl: string,
   options?: {
@@ -49,22 +51,26 @@ export const apiService = (
     } catch (interceptorError) {
       return Promise.reject(handleError(interceptorError));
     } finally {
-      logRequest(logging, method, url, fetchOptions);
+      if (logging) logRequest(method, url, fetchOptions);
     }
-    let response;
-    let responseClone;
+    let response: Response;
+    let responseClone: Response | undefined;
+
     try {
       response = await withTimeout(
         fetch(url, fetchOptions),
         timeout,
         controller
       );
-      responseClone = response.clone();
+
+      if (logging) {
+        responseClone = response.clone();
+      }
 
       if (!response.ok) {
         const error = new Error(`HTTP error! Status: ${response.status}`);
-        (error as any).status = response.status;
-        (error as any).message = response.statusText;
+        (error as ApiError).status = response.status;
+        (error as ApiError).message = response.statusText;
         return Promise.reject(handleError(error));
       }
 
@@ -76,7 +82,7 @@ export const apiService = (
     } catch (error) {
       return Promise.reject(handleError(error));
     } finally {
-      logResponse(logging, responseClone!, startTime);
+      if (logging && responseClone) logResponse(responseClone, startTime);
     }
   };
 
