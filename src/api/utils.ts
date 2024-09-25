@@ -1,13 +1,15 @@
-import { method } from ".";
+import { Method } from ".";
 
 export const createFetchOptions = (
-  method: method,
-  body?: Record<string, any>,
+  method: Method,
+  body?: Record<string, unknown>,
   signal?: AbortSignal
 ): RequestInit => {
   const options: RequestInit = {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
     signal,
   };
 
@@ -16,18 +18,6 @@ export const createFetchOptions = (
   }
 
   return options;
-};
-
-export const handleResponse = async <T>(response: Response): Promise<T> => {
-  if (!response.ok) {
-    throw { status: response.status, response };
-  }
-
-  const contentType = response.headers.get("Content-Type");
-  if (contentType && contentType.includes("application/json")) {
-    return await response.json();
-  }
-  return (await response.text()) as unknown as T;
 };
 
 // Timeout 시 취소
@@ -52,16 +42,41 @@ export const logRequest = (
 ) => {
   console.log(`-----[${method}] REQUEST-----`);
   console.log(`[URL]: ${url}`);
-  console.log(`[OPTIONS]:`, options);
+  console.log(`[HEADERS]:`, options.headers);
+  if (options.body) {
+    console.log(`[BODY]:`, JSON.parse(options.body as string));
+  } else {
+    console.log(`[BODY]: No body data`);
+  }
 };
 
-export const logResponse = async (response: Response, startTime: number) => {
+export const logResponse = async (
+  result: Record<string, any>,
+  status: number,
+  startTime: number
+) => {
   const endTime = Date.now();
   const duration = endTime - startTime;
-  const status = response.status;
-  const responseData = await response.json();
+
   console.log("-------RESPONSE-------");
   console.log(`[STATUS]: ${status}`);
   console.log(`[DURATION]: ${duration} ms`);
-  console.log(`[DATA]:`, responseData);
+
+  // 응답 본문 로깅
+  try {
+    console.log(`[RESPONSE BODY]:`, result);
+  } catch (error) {
+    console.log("Error reading response body", error);
+  }
+};
+
+//인터셉터
+export const applyInterceptor = async <T>(
+  target: T,
+  interceptorFn?: (target: T) => Promise<T> | T
+): Promise<T> => {
+  if (interceptorFn) {
+    return interceptorFn(target);
+  }
+  return target;
 };

@@ -2,17 +2,20 @@ import { handleError } from "./errorHandler";
 import {
   withTimeout,
   createFetchOptions,
-  handleResponse,
   logRequest,
   logResponse,
+  applyInterceptor,
 } from "./utils";
 
-export type method = "GET" | "POST" | "DELETE" | "PUT";
+export type Method = "GET" | "POST" | "DELETE" | "PUT";
+
 interface RequestParams {
-  method?: method;
-  endpoint: string;
-  body?: Record<string, any>;
+  body?: Record<string, unknown>;
   timeout?: number;
+}
+
+interface SafetyParams extends RequestParams {
+  body: Record<string, unknown>;
 }
 
 interface Interceptor {
@@ -24,76 +27,70 @@ type ApiError = { status: number } & Error;
 
 export const apiService = (
   baseUrl: string,
-  options?: {
+  config: {
     interceptor?: Interceptor;
     logging?: boolean;
-  }
+    timeout?: number; // 전역 타임아웃 설정 추가
+  } = {}
 ) => {
-  const interceptor = options?.interceptor || {};
-  const logging = options?.logging || false;
+  const { interceptor, logging, timeout: globalTimeout = 5000 } = config;
 
-  const executeRequest = async <T>({
-    method = "GET",
-    endpoint,
-    body,
-    timeout = 5000,
-  }: RequestParams): Promise<T> => {
-    const controller = new AbortController();
+  const executeRequest = async <T>(
+    method: Method,
+    endpoint: string,
+    { body, timeout = globalTimeout }: RequestParams | SafetyParams = {}
+  ): Promise<T> => {
+    const abortController = new AbortController();
     const startTime = Date.now();
-
-    let fetchOptions = createFetchOptions(method, body, controller.signal);
     const url = `${baseUrl}${endpoint}`;
 
-    try {
-      if (typeof interceptor.request === "function") {
-        fetchOptions = await interceptor.request(fetchOptions);
-      }
-    } catch (interceptorError) {
-      return Promise.reject(handleError(interceptorError));
-    } finally {
-      if (logging) logRequest(method, url, fetchOptions);
-    }
-    let response: Response;
-    let responseClone: Response | undefined;
+    // Fetch 요청 옵션 생성
+    let fetchOptions = createFetchOptions(method, body, abortController.signal);
 
     try {
-      response = await withTimeout(
+      // 요청 인터셉터 적용
+      fetchOptions = await applyInterceptor(fetchOptions, interceptor?.request);
+      if (logging) logRequest(method, url, fetchOptions);
+
+      // 타임아웃 설정과 함께 요청 실행
+      const response = await withTimeout(
         fetch(url, fetchOptions),
         timeout,
-        controller
+        abortController
       );
-
-      if (logging) {
-        responseClone = response.clone();
-      }
 
       if (!response.ok) {
         const error = new Error(`HTTP error! Status: ${response.status}`);
         (error as ApiError).status = response.status;
-        (error as ApiError).message = response.statusText;
-        return Promise.reject(handleError(error));
+        throw error;
       }
 
-      if (typeof interceptor.response === "function") {
-        return await interceptor.response(response);
-      }
+      // 응답 인터셉터 적용
+      const result = await applyInterceptor(response, interceptor?.response);
 
-      return await handleResponse<T>(response);
+      if (logging) logResponse(result, response.status, startTime);
+
+      return result as T;
     } catch (error) {
       return Promise.reject(handleError(error));
     } finally {
-      if (logging && responseClone) logResponse(responseClone, startTime);
+      if (abortController.signal.aborted === false) {
+        abortController.abort();
+      }
     }
   };
 
+  // 메서드 생성
+  const createMethod = <T>(method: Method) => {
+    return (endpoint: string, params?: RequestParams | SafetyParams) =>
+      executeRequest<T>(method, endpoint, params || {});
+  };
+
+  // HTTP 메서드 별 함수 제공
   return {
-    get: <T>(params: Omit<RequestParams, "method">) =>
-      executeRequest<T>({ ...params, method: "GET" }),
-    post: <T>(params: Omit<RequestParams, "method">) =>
-      executeRequest<T>({ ...params, method: "POST" }),
-    put: <T>(params: Omit<RequestParams, "method">) =>
-      executeRequest<T>({ ...params, method: "PUT" }),
-    delete: <T>(params: Omit<RequestParams, "method">) =>
-      executeRequest<T>({ ...params, method: "DELETE" }),
+    get: createMethod("GET"),
+    post: createMethod("POST"),
+    put: createMethod("PUT"),
+    delete: createMethod("DELETE"),
   };
 };
