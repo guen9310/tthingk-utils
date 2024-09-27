@@ -1,4 +1,3 @@
-import { handleError } from "./errorHandler";
 import {
   withTimeout,
   createFetchOptions,
@@ -23,14 +22,21 @@ interface Interceptor {
   response?: (response: Response) => Promise<any>;
 }
 
-type ApiError = { status: number } & Error;
+export class ApiError extends Error {
+  status: number;
 
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = "ApiError";
+  }
+}
 export const apiService = (
   baseUrl: string,
   config: {
     interceptor?: Interceptor;
     logging?: boolean;
-    timeout?: number; // 전역 타임아웃 설정 추가
+    timeout?: number;
   } = {}
 ) => {
   const { interceptor, logging, timeout: globalTimeout = 5000 } = config;
@@ -39,7 +45,7 @@ export const apiService = (
     method: Method,
     endpoint: string,
     { body, timeout = globalTimeout }: RequestParams | SafetyParams = {}
-  ): Promise<T> => {
+  ): Promise<{ data: T; status: number }> => {
     const abortController = new AbortController();
     const startTime = Date.now();
     const url = `${baseUrl}${endpoint}`;
@@ -60,24 +66,21 @@ export const apiService = (
       );
 
       if (!response.ok) {
-        const error = new Error(`HTTP error! Status: ${response.status}`);
-        (error as ApiError).status = response.status;
-        throw error;
+        throw new ApiError(response.status, `요청 실패: ${response.status}`);
       }
 
       // 응답 인터셉터 적용
       const result = await applyInterceptor(response, interceptor?.response);
-
       if (logging) logResponse(result, response.status, startTime);
-
-      return result as T;
+      return { data: result as T, status: response.status };
     } catch (error) {
-      return Promise.reject(handleError(error));
-    } finally {
-      if (abortController.signal.aborted === false) {
-        abortController.abort();
-      }
+      return Promise.reject(error);
     }
+    // finally {
+    //   if (abortController.signal.aborted === false) {
+    //     abortController.abort();
+    //   }
+    // }
   };
 
   // 메서드 생성

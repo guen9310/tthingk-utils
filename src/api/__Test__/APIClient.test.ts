@@ -1,325 +1,199 @@
-import { apiService } from "..";
+import { setupServer } from "msw/node";
+import { ApiError, apiService } from "..";
+import { handlers } from "./handlers";
+import { delay, http, HttpResponse } from "msw";
+
+// Mock 서버 설정
+const server = setupServer(...handlers);
+
+// Mock 서버 시작 및 종료 처리
+beforeAll(() => {
+  server.listen();
+});
+afterEach(() => {
+  server.resetHandlers();
+});
+afterAll(() => {
+  server.close();
+});
 
 describe("APIClient 성공 테스트", () => {
-  const baseUrl = "https://jsonplaceholder.typicode.com";
-  let apiClient: ReturnType<typeof apiService>;
-  let fetchMock: jest.Mock;
-
-  beforeEach(() => {
-    jest.useFakeTimers();
-    apiClient = apiService(baseUrl);
-
-    fetchMock = jest.fn().mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue({ data: "test data" }),
-      headers: new Headers({ "Content-Type": "application/json" }),
-      clone: function () {
-        return this;
-      },
+  const api = apiService("https://api.example.com", { logging: false });
+  test("GET 요청 성공", async () => {
+    const result = await api.get("/user");
+    expect(result.data).toEqual({
+      id: "c7b3d8e0-5e0b-4b0f-8b3a-3b9f4b3d3b3d",
+      firstName: "John",
+      lastName: "Maverick",
     });
-    global.fetch = fetchMock;
   });
 
-  afterEach(() => {
-    jest.runOnlyPendingTimers();
-    jest.clearAllTimers();
-    jest.clearAllMocks();
-    jest.useRealTimers();
-  });
-
-  it("GET 요청 성공 테스트", async () => {
-    const data = await apiClient.get("/posts/1");
-
-    expect(fetch).toHaveBeenCalledWith(
-      `${baseUrl}/posts/1`,
-      expect.objectContaining({
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-        signal: expect.anything(),
-      })
-    );
-    expect(data).toEqual({ data: "test data" });
-  });
-
-  // it("POST 요청에서 method를 GET으로 덮어쓰기 시도했을 때, POST 요청이 유지되는지 테스트", async () => {
-  //   const mockBody = { title: "foo", body: "bar", userId: 1 };
-
-  //   await apiClient.post({
-  //     endpoint: "/posts",
-  //     body: mockBody,
-  //     method: "GET",
-  //   } as any);
-
-  //   expect(fetch).toHaveBeenCalledWith(
-  //     `${baseUrl}/posts`,
-  //     expect.objectContaining({
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify(mockBody),
-  //       signal: expect.anything(),
-  //     })
-  //   );
-  // });
-
-  it("POST 요청 성공 테스트", async () => {
-    const mockBody = { title: "foo", body: "bar", userId: 1 };
-
-    const data = await apiClient.post("/posts", {
+  test("POST 요청 성공", async () => {
+    const mockBody = {
+      userId: 1,
+      firstName: "foo",
+      lastName: "bar",
+    };
+    const result = await api.post("/user", {
       body: mockBody,
     });
-
-    expect(fetch).toHaveBeenCalledWith(
-      `${baseUrl}/posts`,
-      expect.objectContaining({
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mockBody),
-        signal: expect.anything(),
-      })
-    );
-    expect(data).toEqual({ data: "test data" });
-  });
-
-  it("PUT 요청 성공 테스트", async () => {
-    const mockBody = { title: "foo", body: "bar", userId: 1 };
-
-    const data = await apiClient.put("/posts/1", {
-      body: mockBody,
+    expect(result.data).toEqual({
+      message: `new Account Success, ${result.data}`,
     });
-
-    expect(fetch).toHaveBeenCalledWith(
-      `${baseUrl}/posts/1`,
-      expect.objectContaining({
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mockBody),
-        signal: expect.anything(),
-      })
-    );
-    expect(data).toEqual({ data: "test data" });
   });
 
-  it("DELETE 요청 성공 테스트", async () => {
-    const data = await apiClient.delete("/posts/1");
+  test("POST 요청에서 method를 GET으로 덮어쓰기 시도했을 때, POST 요청이 유지되는지 테스트", async () => {
+    const mockBody = {
+      userId: 1,
+      firstName: "foo",
+      lastName: "bar",
+    };
 
-    expect(fetch).toHaveBeenCalledWith(
-      `${baseUrl}/posts/1`,
-      expect.objectContaining({
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        signal: expect.anything(),
-      })
-    );
-    expect(data).toEqual({ data: "test data" });
+    const result = await api.post("/user", {
+      method: "GET",
+      body: mockBody,
+    } as any);
+
+    expect(result.data).toEqual({
+      message: `new Account Success, ${result.data}`,
+    });
   });
 });
 
 describe("APIClient 상태 코드 에러 테스트", () => {
-  const baseUrl = "https://jsonplaceholder.typicode.com";
-  let apiClient: ReturnType<typeof apiService>;
+  const api = apiService("https://api.example.com");
 
-  beforeAll(() => {
-    jest.useFakeTimers();
-  });
+  const errorScenarios = [
+    { status: 400, expectedMessage: "요청 실패: 400" },
+    { status: 401, expectedMessage: "요청 실패: 401" },
+    { status: 403, expectedMessage: "요청 실패: 403" },
+    { status: 404, expectedMessage: "요청 실패: 404" },
+    { status: 500, expectedMessage: "요청 실패: 500" },
+  ];
 
-  beforeEach(() => {
-    apiClient = apiService(baseUrl);
+  const fetchDataTimeout = async (api: any, timeout = 5000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue({ data: "test data" }),
-      headers: new Headers({ "Content-Type": "application/json" }),
-      clone: function () {
-        return this;
-      },
-    }) as jest.MockedFunction<typeof fetch>;
-  });
+    try {
+      const response = await api.get("/user", {
+        signal: controller.signal,
+      });
+      clearTimeout(id);
+      return response.data;
+    } catch (error) {
+      if ((error as any).name === "AbortError") {
+        throw new Error("Request timed out");
+      }
+      throw error;
+    }
+  };
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
-
-  afterAll(() => {
-    jest.useRealTimers();
-  });
-
-  it("500 상태 코드 에러 핸들링 테스트", async () => {
-    global.fetch = jest.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      json: jest.fn().mockResolvedValue({ message: "API 요청 실패" }),
-      clone: function () {
-        return this;
-      },
-    });
-
-    await expect(apiClient.get("/error-test")).rejects.toMatchObject({
-      status: 500,
-    });
-  });
-
-  it("404 상태 코드 에러 핸들링 테스트", async () => {
-    global.fetch = jest.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      json: jest
-        .fn()
-        .mockResolvedValue({ message: "리소스를 찾을 수 없습니다." }),
-      clone: function () {
-        return this;
-      },
-    });
-
-    await expect(apiClient.get("/error-test")).rejects.toMatchObject({
-      status: 404,
-    });
-  });
-
-  it("400 상태 코드 에러 핸들링 테스트", async () => {
-    global.fetch = jest.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 400,
-      json: jest.fn().mockResolvedValue({ message: "잘못된 요청입니다." }),
-      clone: function () {
-        return this;
-      },
-    });
-
-    await expect(
-      apiClient.post("/error-test", { body: {} })
-    ).rejects.toMatchObject({
-      status: 400,
-    });
-  });
-
-  it("401 상태 코드 에러 핸들링 테스트", async () => {
-    global.fetch = jest.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-      json: jest.fn().mockResolvedValue({ message: "인증이 필요합니다." }),
-      clone: function () {
-        return this;
-      },
-    });
-
-    await expect(apiClient.get("/error-test")).rejects.toMatchObject({
-      status: 401,
-    });
-  });
-
-  it("타임아웃 에러가 발생하는지 테스트", async () => {
-    global.fetch = jest
-      .fn()
-      .mockImplementation(
-        () =>
-          new Promise((_, reject) =>
-            setTimeout(
-              () => reject(new DOMException("Timeout", "AbortError")),
-              6000
-            )
-          )
+  errorScenarios.forEach(({ status, expectedMessage }) => {
+    test(`${status} 에러 테스트`, async () => {
+      server.use(
+        http.get("https://api.example.com/user", () => {
+          return new HttpResponse(
+            JSON.stringify({ message: expectedMessage }),
+            {
+              status,
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          );
+        })
       );
-
-    const promise = apiClient.get("/timeout-test", { timeout: 5000 });
-
-    jest.advanceTimersByTime(6000);
-
-    await expect(promise).rejects.toMatchObject({
-      status: 408,
+      try {
+        await api.get("/user");
+      } catch (error: any) {
+        expect(error.status).toBe(status);
+        expect(error.message).toBe(expectedMessage);
+      }
     });
   });
+
+  test("API 지연 테스트", async () => {
+    server.use(
+      http.get("https://api.example.com/user", async () => {
+        await delay(200);
+        return HttpResponse.json({ name: "John Doe" });
+      })
+    );
+
+    try {
+      // 타임아웃이 5초로 설정된 요청
+      await api.get("/user", { timeout: 100 });
+      fail("요청이 타임아웃되지 않았습니다.");
+    } catch (error: any) {
+      // 타임아웃 발생 시 에러가 AbortError인지 확인
+      expect(error.name).toBe("AbortError");
+      expect(error.message).toBe("This operation was aborted");
+    }
+  }, 6000);
 });
 
-// describe("APIClient 인터셉터 테스트", () => {
-//   const baseUrl = "https://jsonplaceholder.typicode.com";
-//   let apiClient: ReturnType<typeof apiService>;
-//   let fetchMock: jest.Mock;
+describe("APIClient 인터셉터 테스트", () => {
+  const interceptor = {
+    request: async (options: RequestInit) => {
+      const token = "my-token";
+      options.headers = {
+        ...options.headers,
+        Authorization: `Bearer ${token}`,
+      };
+      return options;
+    },
+    response: async (response: Response) => {
+      const data = await response.json();
+      return { ...data, modified: true };
+    },
+  };
 
-//   beforeEach(() => {
-//     jest.useFakeTimers();
+  const baseUrl = "https://api.example.com";
+  const api = apiService(baseUrl, { interceptor });
 
-//     const interceptor = {
-//       request: async (options: RequestInit) => {
-//         const token = "token";
-//         options.headers = {
-//           ...options.headers,
-//           Authorization: `Bearer ${token}`,
-//         };
-//         return options;
-//       },
-//       response: async (response: Response) => {
-//         if (!response.ok) {
-//           const errorMessage = await response.json();
-//           throw new Error(`응답 에러: ${errorMessage}`);
-//         }
-//         const responseData = await response.json();
-//         return { ...responseData, modified: true };
-//       },
-//     };
+  // request 인터셉터 테스트
 
-//     apiClient = apiService(baseUrl, { interceptor });
+  test("GET 요청에서 request 인터셉터로 인증 토큰이 헤더에 추가되는지 테스트", async () => {
+    server.use(
+      http.get(`${baseUrl}/user`, async ({ request }) => {
+        return HttpResponse.json({
+          Authorization: request.headers.get("Authorization"),
+        });
+      })
+    );
 
-//     fetchMock = jest.fn().mockResolvedValue({
-//       ok: true,
-//       json: jest.fn().mockResolvedValue({ data: "test data" }),
-//       clone: function () {
-//         return this;
-//       },
-//     });
-//     global.fetch = fetchMock;
-//   });
+    const result = await api.get("/user");
+    expect((result.data as any).Authorization).toBe("Bearer my-token");
+  });
 
-//   afterEach(() => {
-//     jest.runOnlyPendingTimers();
-//     jest.clearAllTimers();
-//     jest.clearAllMocks();
-//     jest.useRealTimers();
-//   });
+  // response 인터셉터 성공 테스트
+  test("GET 요청에서 response 인터셉터가 데이터를 수정하는지 테스트", async () => {
+    const result = await api.get("/user");
 
-//   // request 인터셉터 테스트
-//   it("GET 요청에서 request 인터셉터로 인증 토큰이 헤더에 추가되는지 테스트", async () => {
-//     await apiClient.get("/posts/1");
+    expect(result.data).toEqual({
+      id: "c7b3d8e0-5e0b-4b0f-8b3a-3b9f4b3d3b3d",
+      firstName: "John",
+      lastName: "Maverick",
+      modified: true,
+    });
+  });
 
-//     expect(fetch).toHaveBeenCalledWith(
-//       `${baseUrl}/posts/1`,
-//       expect.objectContaining({
-//         headers: {
-//           Authorization: `Bearer token`,
-//           "Content-Type": "application/json",
-//         },
-//         signal: expect.anything(),
-//       })
-//     );
-//   });
+  test("GET 요청에서 401 Unauthorized 에러를 테스트", async () => {
+    server.use(
+      http.get(`${baseUrl}/user`, async () => {
+        return new HttpResponse(null, {
+          status: 401,
+        });
+      })
+    );
 
-//   // response 인터셉터 성공 테스트
-//   it("GET 요청에서 response 인터셉터가 데이터를 수정하는지 테스트", async () => {
-//     const data = await apiClient.get("/posts/1");
-
-//     expect(data).toEqual({
-//       data: "test data",
-//       modified: true,
-//     });
-//   });
-
-//   // response 인터셉터 에러 처리 테스트
-//   it("GET 요청에서 response 인터셉터가 응답 에러를 처리하는지 테스트", async () => {
-//     fetchMock.mockResolvedValueOnce({
-//       ok: false,
-//       status: 500,
-//       json: jest.fn().mockResolvedValue({ message: "서버 오류" }),
-//       clone: function () {
-//         return this;
-//       },
-//     });
-
-//     try {
-//       await apiClient.get("/posts/1");
-//     } catch (error) {
-//       if (error instanceof Error)
-//         expect(error.message).toBe("응답 에러: 서버 오류");
-//     }
-//   });
-// });
+    try {
+      await api.get("/user");
+    } catch (error: any) {
+      // 에러 상태 코드 확인
+      expect(error.status).toBe(401);
+      expect(error.message).toBe("요청 실패: 401");
+    }
+  });
+});

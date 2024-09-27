@@ -72,11 +72,29 @@ export const logResponse = async (
 
 //인터셉터
 export const applyInterceptor = async <T>(
-  target: T,
+  target: Response | RequestInit,
   interceptorFn?: (target: T) => Promise<T> | T
 ): Promise<T> => {
-  if (interceptorFn) {
-    return interceptorFn(target);
+  try {
+    if (interceptorFn) {
+      if (target instanceof Response) {
+        const result = target.clone() as T;
+        return interceptorFn(result);
+      } else {
+        return interceptorFn(target as T);
+      }
+    } else {
+      if (target instanceof Response) {
+        const result = await target.clone().json();
+        return result as T;
+      } else {
+        return target as T;
+      }
+    }
+  } catch (error) {
+    if (target instanceof Response && target.status === 204) {
+      return {} as T;
+    }
+    throw new Error("Failed to parse response body as JSON");
   }
-  return target;
 };
