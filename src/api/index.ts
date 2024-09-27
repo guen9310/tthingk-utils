@@ -1,37 +1,29 @@
 import {
+  ApiError,
+  Interceptor,
+  Method,
+  RequestParams,
+  NobodyRequestParams,
+} from "./types";
+import {
   withTimeout,
   createFetchOptions,
   logRequest,
   logResponse,
-  applyInterceptor,
+  applyRequestInterceptor,
+  applyResponseInterceptor,
 } from "./utils";
 
-export type Method = "GET" | "POST" | "DELETE" | "PUT";
-
-interface RequestParams {
-  body?: Record<string, unknown>;
-  timeout?: number;
-}
-
-interface SafetyParams extends RequestParams {
-  body: Record<string, unknown>;
-}
-
-interface Interceptor {
-  request?: (options: RequestInit) => Promise<RequestInit> | RequestInit;
-  response?: (response: Response) => Promise<any>;
-}
-
-export class ApiError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-    this.name = "ApiError";
-  }
-}
-export const apiService = (
+/**
+ * API 서비스 생성 함수
+ * @template T - 응답 데이터 타입
+ * @param {string} baseUrl - API 기본 URL
+ * @param {Object} [config] - API 서비스 구성 옵션
+ * @param {Interceptor} [config.interceptor] - 요청 및 응답 인터셉터
+ * @param {boolean} [config.logging=false] - 로깅 활성화 여부
+ * @param {number} [config.timeout=5000] - 요청 타임아웃 (ms)
+ */
+export const apiService = <T>(
   baseUrl: string,
   config: {
     interceptor?: Interceptor;
@@ -41,59 +33,94 @@ export const apiService = (
 ) => {
   const { interceptor, logging, timeout: globalTimeout = 5000 } = config;
 
-  const executeRequest = async <T>(
+  /**
+   * HTTP 요청을 실행하는 함수
+   * @template R - 응답 데이터 타입
+   * @param {Method} method - HTTP 메서드
+   * @param {string} endpoint - API 엔드포인트
+   * @param {RequestParams | NobodyRequestParams} [params={}] - 요청 매개변수
+   * @returns {Promise<{ data: R; status: number }>} - 요청 결과 데이터 및 상태 코드
+   * @throws {ApiError} - 요청 실패 시 발생하는 에러
+   */
+  const executeRequest = async <R>(
     method: Method,
     endpoint: string,
-    { body, timeout = globalTimeout }: RequestParams | SafetyParams = {}
-  ): Promise<{ data: T; status: number }> => {
-    const abortController = new AbortController();
-    const startTime = Date.now();
+    params: RequestParams | NobodyRequestParams = {}
+  ): Promise<{ data: R; status: number }> => {
     const url = `${baseUrl}${endpoint}`;
+    const controller = new AbortController();
+    const timeout = params?.timeout ?? globalTimeout;
 
-    // Fetch 요청 옵션 생성
-    let fetchOptions = createFetchOptions(method, body, abortController.signal);
+    let fetchOptions: RequestInit;
+
+    if (method === "GET" || method === "DELETE") {
+      fetchOptions = createFetchOptions(method, undefined, controller.signal);
+    } else {
+      fetchOptions = createFetchOptions(
+        method,
+        params && (params as RequestParams<Record<string, unknown>>)?.body,
+        controller.signal
+      );
+    }
+
+    // 요청 인터셉터 적용
+    const interceptedOptions = await applyRequestInterceptor(
+      fetchOptions,
+      interceptor?.request
+    );
+
+    if (logging) logRequest(method, url, fetchOptions);
 
     try {
-      // 요청 인터셉터 적용
-      fetchOptions = await applyInterceptor(fetchOptions, interceptor?.request);
-      if (logging) logRequest(method, url, fetchOptions);
-
-      // 타임아웃 설정과 함께 요청 실행
       const response = await withTimeout(
-        fetch(url, fetchOptions),
+        fetch(url, interceptedOptions),
         timeout,
-        abortController
+        controller
       );
 
       if (!response.ok) {
         throw new ApiError(response.status, `요청 실패: ${response.status}`);
       }
 
-      // 응답 인터셉터 적용
-      const result = await applyInterceptor(response, interceptor?.response);
-      if (logging) logResponse(result, response.status, startTime);
-      return { data: result as T, status: response.status };
+      const data = await applyResponseInterceptor<R>(
+        response,
+        interceptor?.response
+      );
+      if (logging)
+        logResponse(data as Record<string, any>, response.status, Date.now());
+
+      return { data, status: response.status };
     } catch (error) {
       return Promise.reject(error);
     }
-    // finally {
-    //   if (abortController.signal.aborted === false) {
-    //     abortController.abort();
-    //   }
-    // }
   };
 
-  // 메서드 생성
-  const createMethod = <T>(method: Method) => {
-    return (endpoint: string, params?: RequestParams | SafetyParams) =>
-      executeRequest<T>(method, endpoint, params || {});
+  /**
+   * 메서드를 동적으로 생성하여 GET, POST, PUT, DELETE 요청을 위한 함수들을 반환합니다.
+   * @template R - 응답 데이터 타입
+   * @template B - 요청 본문 데이터 타입 (POST, PUT의 경우에 사용됨)
+   * @param {Method} method - HTTP 메서드 (GET, POST, PUT, DELETE)
+   * @returns {(endpoint: string, params?: RequestParams | NobodyRequestParams) => Promise<{ data: R; status: number }>}
+   */
+  const createMethod = <R, B = undefined>(
+    method: Method
+  ): ((
+    endpoint: string,
+    params?: B extends undefined ? NobodyRequestParams : RequestParams<B>
+  ) => Promise<{ data: R; status: number }>) => {
+    return (
+      endpoint: string,
+      params?: B extends undefined ? NobodyRequestParams : RequestParams<B>
+    ) => {
+      return executeRequest<R>(method, endpoint, params);
+    };
   };
 
   // HTTP 메서드 별 함수 제공
   return {
-    get: createMethod("GET"),
-    post: createMethod("POST"),
-    put: createMethod("PUT"),
-    delete: createMethod("DELETE"),
+    get: createMethod<T>("GET"),
+    post: createMethod<T, Record<string, unknown>>("POST"),
+    put: createMethod<T, Record<string, unknown>>("PUT"),
+    delete: createMethod<T>("DELETE"),
   };
 };

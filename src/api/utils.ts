@@ -1,5 +1,12 @@
-import { Method } from ".";
+import { Method } from "./types";
 
+/**
+ * fetch 요청을 위한 옵션 객체를 생성합니다.
+ * @param method - HTTP 메서드
+ * @param body - 요청 본문 (선택적)
+ * @param signal - AbortSignal 객체 (선택적)
+ * @returns RequestInit 객체
+ */
 export const createFetchOptions = (
   method: Method,
   body?: Record<string, unknown>,
@@ -20,21 +27,42 @@ export const createFetchOptions = (
   return options;
 };
 
-// Timeout 시 취소
-export const withTimeout = async (
+/**
+ * 지정된 시간 후에 요청을 취소하는 프로미스 래퍼
+ * @param promise - 원본 fetch 프로미스
+ * @param timeout - 타임아웃 시간 (밀리초)
+ * @param controller - AbortController 객체
+ * @returns Promise<Response>
+ */
+export const withTimeout = (
   promise: Promise<Response>,
   timeout: number,
   controller: AbortController
 ): Promise<Response> => {
-  const id = setTimeout(() => controller.abort(), timeout);
-  try {
-    return await promise;
-  } finally {
-    clearTimeout(id);
-  }
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new Error("Request timed out"));
+    }, timeout);
+
+    promise
+      .then((response) => {
+        clearTimeout(timeoutId);
+        resolve(response);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
 };
 
-//loggin true 시, 로그 출력
+/**
+ * HTTP 요청 정보를 로깅합니다.
+ * @param method - HTTP 메서드
+ * @param url - 요청 URL
+ * @param options - fetch 옵션
+ */
 export const logRequest = (
   method: string,
   url: string,
@@ -50,6 +78,12 @@ export const logRequest = (
   }
 };
 
+/**
+ * HTTP 응답 정보를 로깅합니다.
+ * @param result - 결과 값을 반환
+ * @param status - 응답 결과 상태
+ * @param startTime - 요청 시작 시간
+ */
 export const logResponse = async (
   result: Record<string, any>,
   status: number,
@@ -61,40 +95,41 @@ export const logResponse = async (
   console.log("-------RESPONSE-------");
   console.log(`[STATUS]: ${status}`);
   console.log(`[DURATION]: ${duration} ms`);
-
-  // 응답 본문 로깅
-  try {
-    console.log(`[RESPONSE BODY]:`, result);
-  } catch (error) {
-    console.log("Error reading response body", error);
-  }
+  console.log(`[RESPONSE BODY]:`, result);
 };
 
-//인터셉터
-export const applyInterceptor = async <T>(
-  target: Response | RequestInit,
-  interceptorFn?: (target: T) => Promise<T> | T
+/**
+ * 요청 인터셉터를 적용합니다.
+ * @template T
+ * @param {T} options - 요청 옵션
+ * @param {(options: T) => Promise<T> | T} [requestInterceptor] - 요청 인터셉터 함수
+ * @returns {Promise<T>} - 수정된 요청 옵션
+ */
+export const applyRequestInterceptor = async <T extends RequestInit>(
+  options: T,
+  requestInterceptor?: (options: T) => Promise<T> | T
 ): Promise<T> => {
-  try {
-    if (interceptorFn) {
-      if (target instanceof Response) {
-        const result = target.clone() as T;
-        return interceptorFn(result);
-      } else {
-        return interceptorFn(target as T);
-      }
-    } else {
-      if (target instanceof Response) {
-        const result = await target.clone().json();
-        return result as T;
-      } else {
-        return target as T;
-      }
-    }
-  } catch (error) {
-    if (target instanceof Response && target.status === 204) {
-      return {} as T;
-    }
-    throw new Error("Failed to parse response body as JSON");
+  if (requestInterceptor) {
+    return await requestInterceptor(options);
   }
+  return options;
+};
+
+/**
+ * 응답 인터셉터를 적용합니다.
+ * @template T
+ * @param {Response} response - fetch 응답 객체
+ * @param {(response: Response) => Promise<T> | T} [responseInterceptor] - 응답 인터셉터 함수
+ * @returns {Promise<T>} - 수정된 응답 데이터
+ */
+export const applyResponseInterceptor = async <T>(
+  response: Response,
+  responseInterceptor?: (response: Response) => Promise<T> | T
+): Promise<T> => {
+  if (responseInterceptor) {
+    const result = response.clone();
+    return await responseInterceptor(result);
+  }
+
+  return response.json() as Promise<T>;
 };

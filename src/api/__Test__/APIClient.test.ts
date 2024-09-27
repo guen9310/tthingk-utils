@@ -1,7 +1,7 @@
 import { setupServer } from "msw/node";
-import { ApiError, apiService } from "..";
-import { handlers } from "./handlers";
 import { delay, http, HttpResponse } from "msw";
+import { apiService } from "..";
+import { handlers } from "./handlers";
 
 // Mock 서버 설정
 const server = setupServer(...handlers);
@@ -121,16 +121,10 @@ describe("APIClient 상태 코드 에러 테스트", () => {
       })
     );
 
-    try {
-      // 타임아웃이 5초로 설정된 요청
+    await expect(async () => {
       await api.get("/user", { timeout: 100 });
-      fail("요청이 타임아웃되지 않았습니다.");
-    } catch (error: any) {
-      // 타임아웃 발생 시 에러가 AbortError인지 확인
-      expect(error.name).toBe("AbortError");
-      expect(error.message).toBe("This operation was aborted");
-    }
-  }, 6000);
+    }).rejects.toThrow("Request timed out");
+  });
 });
 
 describe("APIClient 인터셉터 테스트", () => {

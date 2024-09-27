@@ -1,10 +1,10 @@
 # tthingk-utils
 
-tthingk-utils는 간단하고 자주 사용되는 유틸리티 함수들을 모아 놓은 학습용 개인 라이브러리입니다. 이 라이브러리는 Axios와 Zustand와 같은 상용 라이브러리에서 제공하는 기능들을 참고하여, 비슷한 효과를 내는 것을 목표로 하고 있습니다. 이를 통해 실제 프로젝트에서 자주 사용하는 패턴을 이해하고, 더 나아가 직접 구현해보며 학습을 도모합니다.
+tthingk-utils는 간단하고 자주 사용되는 유틸리티 함수들을 모아 놓은 학습용 개인 라이브러리입니다. 이 라이브러리는 Axios와 Zustand와 같은 상용 라이브러리에서 제공하는 기능들을 참고하여, 비슷한 효과를 내는 것을 목표로 하고 있습니다. 이를 통해 실제 프로젝트에서 자주 사용하는 패턴을 이해할 목적으로 진행합니다.
 
-## APIClient
+## apiService
 
-웹과 앱 환경에서 공통적으로 사용할 수 있는 API 요청 유틸리티를 제공하며, 다양한 프로젝트에서 쉽게 활용할 수 있습니다.
+apiService는 웹과 앱 환경에서 공통적으로 사용할 수 있는 API 요청 유틸리티를 제공하며, 다양한 프로젝트에서 쉽게 활용할 수 있습니다. 이 클라이언트는 fetch API를 기반으로 하며, 간단한 RESTful API 요청을 처리하는 데 최적화되어 있습니다.
 
 ### 주요 기능
 
@@ -15,7 +15,7 @@ tthingk-utils는 간단하고 자주 사용되는 유틸리티 함수들을 모�
 
 ### 사용 방법
 
-#### 1. 기본 사용 방법
+#### 기본값(Default)
 
 ```ts
 import { apiService } from "tthingk-utils/api";
@@ -32,7 +32,7 @@ const newUser = await api.post("/users", {
 });
 ```
 
-#### 2. interceptor
+#### 인터셉터 (Interceptor)
 
 인터셉터는 요청과 응답을 가로채어 특정 로직을 추가할 수 있는 기능입니다. request 인터셉터는 HTTP 요청이 서버로 보내지기 전에 호출되고, response 인터셉터는 서버에서 응답을 받은 후에 호출됩니다.
 
@@ -60,7 +60,7 @@ const apiWithInterceptor = apiService("https://api.example.com", {
 const userData = await apiWithInterceptor.get("/users/me");
 ```
 
-#### 3.timeout
+#### 타임아웃 (Timeout)
 
 타임아웃 옵션을 사용하면 지정된 시간 내에 응답을 받지 못할 경우 요청을 중단할 수 있습니다. 기본 타임아웃은 5000ms(5초)로 설정되어 있으며, 개별 요청에서도 타임아웃 시간을 지정할 수 있습니다.
 
@@ -82,9 +82,9 @@ const dataWithCustomTimeout = await apiWithTimeout.get("/quick-request", {
 });
 ```
 
-#### 4. logging
+#### 4. 로그 (Logging)
 
-로깅 기능을 활성화하면 콘솔에 요청 및 응답의 세부 정보가 출력됩니다. 이를 통해 개발자가 요청 및 응답 데이터를 쉽게 디버깅할 수 있습니다.
+로그 기능을 활성화하면 콘솔에 요청 및 응답의 세부 정보가 출력됩니다. 이를 통해 개발자가 요청 및 응답 데이터를 쉽게 디버깅할 수 있습니다.
 
 ```ts
 const apiWithLogging = apiService("https://api.example.com", {
@@ -107,7 +107,3 @@ const newUser = await apiWithLogging.post("/users", {
 // [DURATION]: 123 ms
 // [RESPONSE BODY]: { id: "123", name: "Jane Doe", email: "jane@example.com" }
 ```
-
-## StoreManager(미정)
-
-향후 구독형 상태 관리 라이브러리로 확장될 예정입니다. 이를 통해 다양한 상태 관리 패턴을 쉽게 구현하고, 컴포넌트 간 상태를 효율적으로 관리할 수 있도록 지원할 계획입니다.
