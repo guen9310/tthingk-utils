@@ -13,6 +13,18 @@ apiService는 웹과 앱 환경에서 공통적으로 사용할 수 있는 API �
 - 요청/응답 인터셉터
 - 로깅 기능
 
+### 장점
+
+1. **경량성**: 필수 기능만 포함하여 axios에 비해 가볍습니다. 그로 인해 번들 크기가 작아져, 성능에 민감한 애플리케이션에서 유리합니다.
+
+2. **유연한 확장성**: 필수적인 기능(HTTP 요청, 타임아웃, 인터셉터 등)만 제공하고, 나머지 기능은 사용자가 필요할 때 추가할 수 있어 커스터마이징이 용이합니다.
+
+3. **단순한 API**: API가 간결하게 설계되어 있어 복잡한 설정 없이도 쉽게 사용할 수 있습니다. 특히 초보 개발자나 특정 요구 사항에 맞춰 사용하기에 적합합니다.
+
+4. **최신 브라우저 API 활용**: 최신 `fetch` API를 기반으로 하여 최신 브라우저 환경에서 최적화된 성능을 제공합니다. 또한, `fetch` API의 기본 기능을 그대로 활용해 더 나은 에러 핸들링과 스트림 처리도 가능합니다.
+
+5. **의존성 최소화**: 의존성을 거의 사용하지 않거나 아예 사용하지 않기 때문에, 종속성 업데이트 및 관리가 간편하고 종속성 충돌의 위험이 줄어듭니다.
+
 ### 사용 방법
 
 #### 기본값(Default)
@@ -24,7 +36,12 @@ import { apiService } from "tthingk-utils/api";
 const api = apiService("https://api.example.com");
 
 // GET 요청 예시
-const data = await api.get("/users");
+const user = await api.get("/users");
+
+// 쿼리 매개변수 포함 GET 요청
+const userList = await api.get("/users", {
+  queryParams: { page: 1, limit: 10 },
+});
 
 // POST 요청 예시
 const newUser = await api.post("/users", {
@@ -82,7 +99,7 @@ const dataWithCustomTimeout = await apiWithTimeout.get("/quick-request", {
 });
 ```
 
-#### 4. 로그 (Logging)
+#### 로그 (Logging)
 
 로그 기능을 활성화하면 콘솔에 요청 및 응답의 세부 정보가 출력됩니다. 이를 통해 개발자가 요청 및 응답 데이터를 쉽게 디버깅할 수 있습니다.
 
