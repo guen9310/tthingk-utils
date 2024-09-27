@@ -5,7 +5,7 @@ import { handlers } from "./handlers";
 
 // Mock 서버 설정
 const server = setupServer(...handlers);
-
+const baseUrl = "https://api.example.com";
 // Mock 서버 시작 및 종료 처리
 beforeAll(() => {
   server.listen();
@@ -18,13 +18,43 @@ afterAll(() => {
 });
 
 describe("APIClient 성공 테스트", () => {
-  const api = apiService("https://api.example.com", { logging: false });
+  const api = apiService(baseUrl, { logging: false });
   test("GET 요청 성공", async () => {
     const result = await api.get("/user");
     expect(result.data).toEqual({
       id: "c7b3d8e0-5e0b-4b0f-8b3a-3b9f4b3d3b3d",
       firstName: "John",
       lastName: "Maverick",
+    });
+  });
+
+  test("GET qs 요청 성공", async () => {
+    server.use(
+      http.get(`${baseUrl}/user`, ({ request }) => {
+        const url = new URL(request.url);
+        const page = url.searchParams.get("page");
+        const limit = url.searchParams.get("limit");
+
+        return HttpResponse.json({
+          searchParams: { page, limit },
+        });
+      })
+    );
+    const result = await api.get("/user", {
+      queryParams: { page: 1, limit: 10 },
+    });
+    expect(
+      (
+        result.data as {
+          searchParams: {
+            page: string;
+            limit: string;
+          };
+        }
+      ).searchParams
+    ).toEqual({
+      page: "1",
+      limit: "10",
     });
   });
 
@@ -92,7 +122,7 @@ describe("APIClient 상태 코드 에러 테스트", () => {
   errorScenarios.forEach(({ status, expectedMessage }) => {
     test(`${status} 에러 테스트`, async () => {
       server.use(
-        http.get("https://api.example.com/user", () => {
+        http.get(`${baseUrl}/user`, () => {
           return new HttpResponse(
             JSON.stringify({ message: expectedMessage }),
             {
@@ -115,7 +145,7 @@ describe("APIClient 상태 코드 에러 테스트", () => {
 
   test("API 지연 테스트", async () => {
     server.use(
-      http.get("https://api.example.com/user", async () => {
+      http.get(`${baseUrl}/user`, async () => {
         await delay(200);
         return HttpResponse.json({ name: "John Doe" });
       })
@@ -143,7 +173,6 @@ describe("APIClient 인터셉터 테스트", () => {
     },
   };
 
-  const baseUrl = "https://api.example.com";
   const api = apiService(baseUrl, { interceptor });
 
   // request 인터셉터 테스트

@@ -7,7 +7,7 @@ import { Method } from "./types";
  * @param signal - AbortSignal 객체 (선택적)
  * @returns RequestInit 객체
  */
-export const createFetchOptions = (
+const createFetchOptions = (
   method: Method,
   body?: Record<string, unknown>,
   signal?: AbortSignal
@@ -28,13 +28,27 @@ export const createFetchOptions = (
 };
 
 /**
+ * 객체를 쿼리 스트링으로 변환하는 함수
+ * @param {Record<string, any>} params - 쿼리 매개변수 객체
+ * @returns {string} - 쿼리 스트링
+ */
+const createQueryString = (params: Record<string, any>): string => {
+  const queryString = Object.keys(params)
+    .map(
+      (key) => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`
+    )
+    .join("&");
+  return queryString ? `?${queryString}` : "";
+};
+
+/**
  * 지정된 시간 후에 요청을 취소하는 프로미스 래퍼
  * @param promise - 원본 fetch 프로미스
  * @param timeout - 타임아웃 시간 (밀리초)
  * @param controller - AbortController 객체
  * @returns Promise<Response>
  */
-export const withTimeout = (
+const withTimeout = (
   promise: Promise<Response>,
   timeout: number,
   controller: AbortController
@@ -63,11 +77,7 @@ export const withTimeout = (
  * @param url - 요청 URL
  * @param options - fetch 옵션
  */
-export const logRequest = (
-  method: string,
-  url: string,
-  options: RequestInit
-) => {
+const logRequest = (method: string, url: string, options: RequestInit) => {
   console.log(`-----[${method}] REQUEST-----`);
   console.log(`[URL]: ${url}`);
   console.log(`[HEADERS]:`, options.headers);
@@ -84,7 +94,7 @@ export const logRequest = (
  * @param status - 응답 결과 상태
  * @param startTime - 요청 시작 시간
  */
-export const logResponse = async (
+const logResponse = async (
   result: Record<string, any>,
   status: number,
   startTime: number
@@ -105,7 +115,7 @@ export const logResponse = async (
  * @param {(options: T) => Promise<T> | T} [requestInterceptor] - 요청 인터셉터 함수
  * @returns {Promise<T>} - 수정된 요청 옵션
  */
-export const applyRequestInterceptor = async <T extends RequestInit>(
+const applyRequestInterceptor = async <T extends RequestInit>(
   options: T,
   requestInterceptor?: (options: T) => Promise<T> | T
 ): Promise<T> => {
@@ -122,7 +132,7 @@ export const applyRequestInterceptor = async <T extends RequestInit>(
  * @param {(response: Response) => Promise<T> | T} [responseInterceptor] - 응답 인터셉터 함수
  * @returns {Promise<T>} - 수정된 응답 데이터
  */
-export const applyResponseInterceptor = async <T>(
+const applyResponseInterceptor = async <T>(
   response: Response,
   responseInterceptor?: (response: Response) => Promise<T> | T
 ): Promise<T> => {
@@ -132,4 +142,14 @@ export const applyResponseInterceptor = async <T>(
   }
 
   return response.json() as Promise<T>;
+};
+
+export {
+  createFetchOptions,
+  createQueryString,
+  withTimeout,
+  logRequest,
+  logResponse,
+  applyRequestInterceptor,
+  applyResponseInterceptor,
 };

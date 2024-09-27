@@ -12,6 +12,7 @@ import {
   logResponse,
   applyRequestInterceptor,
   applyResponseInterceptor,
+  createQueryString,
 } from "./utils";
 
 /**
@@ -47,14 +48,18 @@ export const apiService = <T>(
     endpoint: string,
     params: RequestParams | NobodyRequestParams = {}
   ): Promise<{ data: R; status: number }> => {
-    const url = `${baseUrl}${endpoint}`;
+    let url = `${baseUrl}${endpoint}`;
     const controller = new AbortController();
     const timeout = params?.timeout ?? globalTimeout;
 
     let fetchOptions: RequestInit;
 
     if (method === "GET" || method === "DELETE") {
+      const queryString = params?.queryParams
+        ? createQueryString(params.queryParams)
+        : "";
       fetchOptions = createFetchOptions(method, undefined, controller.signal);
+      url += queryString;
     } else {
       fetchOptions = createFetchOptions(
         method,

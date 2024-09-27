@@ -12,6 +12,7 @@ type Method = "GET" | "POST" | "DELETE" | "PUT";
  * @property {AbortSignal} [signal] - 요청 취소 신호
  */
 interface RequestParams<T = unknown> {
+  queryParams?: Record<string, any>;
   body?: T;
   timeout?: number;
   signal?: AbortSignal;
