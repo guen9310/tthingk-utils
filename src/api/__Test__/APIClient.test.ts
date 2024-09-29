@@ -101,24 +101,6 @@ describe("APIClient 상태 코드 에러 테스트", () => {
     { status: 500, expectedMessage: "요청 실패: 500" },
   ];
 
-  const fetchDataTimeout = async (api: any, timeout = 5000) => {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      const response = await api.get("/user", {
-        signal: controller.signal,
-      });
-      clearTimeout(id);
-      return response.data;
-    } catch (error) {
-      if ((error as any).name === "AbortError") {
-        throw new Error("Request timed out");
-      }
-      throw error;
-    }
-  };
-
   errorScenarios.forEach(({ status, expectedMessage }) => {
     test(`${status} 에러 테스트`, async () => {
       server.use(
@@ -141,19 +123,6 @@ describe("APIClient 상태 코드 에러 테스트", () => {
         expect(error.message).toBe(expectedMessage);
       }
     });
-  });
-
-  test("API 지연 테스트", async () => {
-    server.use(
-      http.get(`${baseUrl}/user`, async () => {
-        await delay(200);
-        return HttpResponse.json({ name: "John Doe" });
-      })
-    );
-
-    await expect(async () => {
-      await api.get("/user", { timeout: 100 });
-    }).rejects.toThrow("Request timed out");
   });
 });
 
@@ -217,6 +186,117 @@ describe("APIClient 인터셉터 테스트", () => {
       // 에러 상태 코드 확인
       expect(error.status).toBe(401);
       expect(error.message).toBe("요청 실패: 401");
+    }
+  });
+
+  test("요청 인터셉터에서 에러 발생 시 처리", async () => {
+    const errorInterceptor = {
+      request: () => {
+        throw new Error("Request interceptor error");
+      },
+    };
+    const api = apiService(baseUrl, { interceptor: errorInterceptor });
+
+    await expect(api.get("/user")).rejects.toThrow("Request interceptor error");
+  });
+
+  test("응답 인터셉터에서 에러 발생 시 처리", async () => {
+    const errorInterceptor = {
+      response: () => {
+        throw new Error("Response interceptor error");
+      },
+    };
+    const api = apiService(baseUrl, { interceptor: errorInterceptor });
+    server.use(
+      http.get(`${baseUrl}/user`, () => {
+        return HttpResponse.json({ name: "John Doe" });
+      })
+    );
+
+    await expect(api.get("/user")).rejects.toThrow(
+      "Response interceptor error"
+    );
+  });
+});
+
+describe("타임아웃 테스트", () => {
+  test("API 지연 테스트", async () => {
+    const api = apiService(baseUrl, { timeout: 100 });
+    server.use(
+      http.get(`${baseUrl}/user`, async () => {
+        await delay(200);
+        return HttpResponse.json({ name: "John Doe" });
+      })
+    );
+
+    await expect(async () => {
+      await api.get("/user", { timeout: 100 });
+    }).rejects.toThrow("Request timed out");
+  });
+  test("글로벌 타임아웃 설정이 적용되는지 테스트", async () => {
+    const api = apiService(baseUrl, { timeout: 100 });
+    server.use(
+      http.get(`${baseUrl}/user`, async () => {
+        await delay(200);
+        return HttpResponse.json({ name: "John Doe" });
+      })
+    );
+
+    await expect(api.get("/user")).rejects.toThrow("Request timed out");
+  });
+
+  test("개별 요청의 타임아웃 설정이 글로벌 설정을 덮어쓰는지 테스트", async () => {
+    const api = apiService(baseUrl, { timeout: 500 });
+    server.use(
+      http.get(`${baseUrl}/user`, async () => {
+        await delay(300);
+        return HttpResponse.json({ name: "John Doe" });
+      })
+    );
+
+    await expect(api.get("/user", { timeout: 200 })).rejects.toThrow(
+      "Request timed out"
+    );
+    const result = await api.get("/user");
+    expect(result.data).toEqual({ name: "John Doe" });
+  });
+});
+
+describe("AbortController 테스트", () => {
+  test("요청 중 AbortController를 사용하여 요청 취소", async () => {
+    const abortController = new AbortController();
+    const api = apiService(baseUrl, { timeout: 1000 });
+
+    let requestStarted = false;
+    let requestCompleted = false;
+
+    server.use(
+      http.get(`${baseUrl}/user`, async ({ request }) => {
+        requestStarted = true;
+        request.signal.addEventListener("abort", () => {
+          requestCompleted = true;
+        });
+
+        await delay(500);
+        requestCompleted = true;
+        return HttpResponse.json({ name: "John Doe" });
+      })
+    );
+
+    const promise = api.get("/user", {
+      signal: abortController.signal,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(requestStarted).toBe(true);
+
+    abortController.abort();
+
+    try {
+      await promise;
+    } catch (error: any) {
+      expect(error.name).toMatch(/AbortError|CanceledError/);
+      expect(requestCompleted).toBe(true);
     }
   });
 });
